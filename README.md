@@ -2,10 +2,11 @@
 
 A Windows kernel-mode EDR (Endpoint Detection & Response), built incrementally.
 It starts as the smallest thing that matters: a kernel driver and a user-mode
-agent that can **talk to each other**. The driver creates a device, the agent
-opens it and pulls data over an IOCTL. There's no telemetry yet — the driver
-answers with a fixed greeting — but the channel everything else will ride on is
-in place.
+agent that can **talk to each other**, then grows real eyes. The driver watches
+process creation from the kernel, queues each event, and the agent pulls a
+packed event stream over an IOCTL and prints it. Process is the first source;
+the queue and the wire contract are built so new sources (thread, image, file,
+network) slot in without touching the transport.
 
 > ⚠️ **For test/educational use.** Aegis loads a test-signed kernel
 > driver. Run it only on a machine with test signing enabled that you are willing
@@ -15,16 +16,19 @@ in place.
 
 | Name | Kind | Output | Role |
 |------|------|--------|------|
-| **AegisMon** | kernel driver | `AegisMon.sys` | Creates the device, dispatches IRPs, answers the IOCTL |
-| **AegisAgent** | user-mode agent | `AegisAgent.exe` | Opens the device and pulls from it |
+| **AegisMon** | kernel driver | `AegisMon.sys` | Watches process create/exit, queues events, answers the IOCTL |
+| **AegisAgent** | user-mode agent | `AegisAgent.exe` | Pulls the event stream and prints it |
 
 ## Layout
 
 ```
-common/   AegisDriverProtocol.h  kernel⇄agent contract (device names + IOCTL)
+common/    AegisDriverProtocol.h  kernel⇄agent contract (event header + payloads)
 driver/
-  core/   Driver.c               device + symlink, IRP dispatch, the IOCTL handler
-agent/    Agent.c                opens the device, sends one IOCTL, prints the reply
+  core/    Driver.c               device + symlink, IRP dispatch, the IOCTL handler
+           EventQueue.c           spinlock-guarded FIFO bridging the IRQL gap
+  modules/ ProcessMon.c           process create/exit notify callback
+           Modules.h              the Start/Stop registry new modules plug into
+agent/     Agent.c                pulls the packed event stream and prints it
 build.cmd  install.ps1  uninstall.ps1
 ```
 
@@ -52,12 +56,14 @@ In an **elevated** PowerShell:
 
 ```powershell
 .\install.ps1            # trusts the test cert, loads the AegisMon service
-.\build\AegisAgent.exe   # opens the device and prints the driver's reply
+.\build\AegisAgent.exe   # streams process events until Ctrl+C
 .\uninstall.ps1          # stop & remove the driver
 ```
 
-Expected output:
+Expected output (launch a few programs while it runs):
 
 ```
-driver says: hello from kernel (18 bytes)
+AegisAgent: streaming process events. Ctrl+C to stop.
+[18:42:07.391] #128   CREATE  pid=9240   ppid=6312   creator=6312   \Device\HarddiskVolume3\Windows\System32\notepad.exe
+[18:42:09.004] #129   EXIT    pid=9240
 ```

@@ -22,11 +22,11 @@ set "TOOLS=%KIT%\bin\%WDKVER%\x64"
 
 if not exist "%OUT%" mkdir "%OUT%"
 
-rem ---- driver: compile every .c under driver\core -----------------------------
+rem ---- driver: compile every .c under driver\core and driver\modules ----------
 echo [build] compiling driver...
-set "DRVINC=/I"%ROOT%common" /I"%ROOT%driver\core" /I"%INCKM%" /I"%INCCRT%" /I"%INCSHARED%""
+set "DRVINC=/I"%ROOT%common" /I"%ROOT%driver\core" /I"%ROOT%driver\modules" /I"%INCKM%" /I"%INCCRT%" /I"%INCSHARED%""
 set "DRVOBJS="
-for %%f in ("%ROOT%driver\core\*.c") do (
+for %%f in ("%ROOT%driver\core\*.c" "%ROOT%driver\modules\*.c") do (
     rem wdmsec.lib is /GS-protected, so compile the driver with stack cookies too.
     cl /nologo /c /kernel /GS /W4 /Zi /Oi /D_WIN64 /D_AMD64_ /DNDEBUG ^
        %DRVINC% /Fo"%OUT%\%%~nf.obj" /Fd"%OUT%\AegisMon.pdb" "%%f" ^
