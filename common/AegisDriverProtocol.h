@@ -35,10 +35,11 @@
 typedef enum _AEGIS_EVENT_TYPE {
     AegisEvtProcessCreate = 1,
     AegisEvtProcessExit   = 2,
-    AegisEvtThreadCreate  = 3,   /* reserved - future module */
-    AegisEvtImageLoad     = 4,   /* reserved - future module */
-    AegisEvtFileOp        = 5,   /* reserved - minifilter     */
-    AegisEvtNetConn       = 6,   /* reserved - WFP callout     */
+    AegisEvtThreadCreate  = 3,
+    AegisEvtThreadExit    = 4,
+    AegisEvtImageLoad     = 5,
+    AegisEvtFileOp        = 6,   /* reserved - minifilter  */
+    AegisEvtNetConn       = 7,   /* reserved - WFP callout */
 } AEGIS_EVENT_TYPE;
 
 #pragma pack(push, 8)
@@ -62,9 +63,38 @@ typedef struct _AEGIS_PROCESS_EVENT {
     wchar_t        ImagePath[AEGIS_MAX_PATH];
 } AEGIS_PROCESS_EVENT, *PAEGIS_PROCESS_EVENT;
 
+/* Payload for AegisEvtThreadCreate (full) and AegisEvtThreadExit (Ids only).
+ * Remote marks a thread whose creator is a different process than the one it
+ * runs in - the shape of CreateRemoteThread injection, though a parent starting
+ * its child's first thread looks the same, so it's a lead to correlate. */
+typedef struct _AEGIS_THREAD_EVENT {
+    unsigned long  ProcessId;
+    unsigned long  ThreadId;
+    unsigned long  CreatingProcessId;
+    unsigned char  Remote;            /* 1 if CreatingProcessId != ProcessId   */
+    unsigned char  Reserved[3];
+} AEGIS_THREAD_EVENT, *PAEGIS_THREAD_EVENT;
+
+/* Payload for AegisEvtImageLoad: an image (user-mode DLL or kernel driver)
+ * mapped into a process. ProcessId is 0 for a kernel driver. */
+typedef struct _AEGIS_IMAGE_EVENT {
+    unsigned long    ProcessId;
+    unsigned char    SystemModeImage; /* 1 if loaded into the kernel, not a process */
+    unsigned char    ImagePathExact;  /* exact source name and not truncated   */
+    unsigned short   ImagePathLength; /* WCHAR count in ImagePath, no NUL       */
+    unsigned __int64 ImageBase;       /* where it mapped                        */
+    unsigned __int64 ImageSize;
+    wchar_t          ImagePath[AEGIS_MAX_PATH];
+} AEGIS_IMAGE_EVENT, *PAEGIS_IMAGE_EVENT;
+
 #pragma pack(pop)
 
 /* Largest event accepted by the current transport. Callers should provide at
- * least this much output space so the head event can always be consumed. */
+ * least this much output space so the head event can always be consumed. The
+ * payload term tracks whichever event type is widest as new ones are added. */
+#define AEGIS_LARGEST_PAYLOAD                                       \
+    (sizeof(AEGIS_PROCESS_EVENT) > sizeof(AEGIS_IMAGE_EVENT)        \
+        ? sizeof(AEGIS_PROCESS_EVENT) : sizeof(AEGIS_IMAGE_EVENT))
+
 #define AEGIS_MAX_EVENT_SIZE \
-    (sizeof(AEGIS_EVENT_HEADER) + sizeof(AEGIS_PROCESS_EVENT) + 64u)
+    (sizeof(AEGIS_EVENT_HEADER) + AEGIS_LARGEST_PAYLOAD + 64u)

@@ -10,3 +10,9 @@
 
 NTSTATUS ProcessMonStart(void);
 void     ProcessMonStop(void);
+
+NTSTATUS ThreadMonStart(void);
+void     ThreadMonStop(void);
+
+NTSTATUS ImageMonStart(void);
+void     ImageMonStop(void);

@@ -75,6 +75,8 @@ AegisUnload(PDRIVER_OBJECT DriverObject)
 
     /* Stop producing first, then tear down the channel, then free the queue -
      * reverse order of DriverEntry, so nothing is left publishing into freed state. */
+    ImageMonStop();
+    ThreadMonStop();
     ProcessMonStop();
 
     IoDeleteSymbolicLink(&g_SymLink);
@@ -124,9 +126,17 @@ DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = AegisDeviceControl;
     DriverObject->DriverUnload                         = AegisUnload;
 
-    /* Start monitor modules. Add future modules here. */
+    /* Start monitor modules. Each new source is one Start call here and its
+     * matching Stop in AegisUnload; the queue and IOCTL underneath never change. */
     status = ProcessMonStart();
+    if (NT_SUCCESS(status)) { status = ThreadMonStart(); }
+    if (NT_SUCCESS(status)) { status = ImageMonStart(); }
     if (!NT_SUCCESS(status)) {
+        /* Each Stop is a no-op unless that module registered, so unwinding all
+         * three is safe regardless of which one failed. */
+        ImageMonStop();
+        ThreadMonStop();
+        ProcessMonStop();
         IoDeleteSymbolicLink(&g_SymLink);
         IoDeleteDevice(g_DeviceObject);
         g_DeviceObject = NULL;
@@ -134,6 +144,6 @@ DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
         return status;
     }
 
-    DbgPrint("[AegisMon] loaded; monitoring process creation\n");
+    DbgPrint("[AegisMon] loaded; monitoring process, thread, and image-load activity\n");
     return STATUS_SUCCESS;
 }

@@ -65,6 +65,44 @@ PrintEvent(const AEGIS_EVENT_HEADER *evt)
         printf("[%s] #%-5lu EXIT    pid=%-6lu\n", ts, evt->Sequence, p->ProcessId);
         break;
     }
+    case AegisEvtThreadCreate: {
+        const AEGIS_THREAD_EVENT *t = (const AEGIS_THREAD_EVENT *)(evt + 1);
+        if (evt->Size < sizeof(*evt) + sizeof(*t)) {
+            fprintf(stderr, "[%s] malformed thread-create event (%u bytes)\n",
+                    ts, evt->Size);
+            break;
+        }
+        printf("[%s] #%-5lu THREAD  pid=%-6lu tid=%-6lu creator=%-6lu%s\n",
+               ts, evt->Sequence, t->ProcessId, t->ThreadId,
+               t->CreatingProcessId, t->Remote ? "  [remote]" : "");
+        break;
+    }
+    case AegisEvtThreadExit: {
+        const AEGIS_THREAD_EVENT *t = (const AEGIS_THREAD_EVENT *)(evt + 1);
+        if (evt->Size < sizeof(*evt) + sizeof(*t)) {
+            fprintf(stderr, "[%s] malformed thread-exit event (%u bytes)\n",
+                    ts, evt->Size);
+            break;
+        }
+        printf("[%s] #%-5lu TEXIT   pid=%-6lu tid=%-6lu\n",
+               ts, evt->Sequence, t->ProcessId, t->ThreadId);
+        break;
+    }
+    case AegisEvtImageLoad: {
+        const AEGIS_IMAGE_EVENT *im = (const AEGIS_IMAGE_EVENT *)(evt + 1);
+        if (evt->Size < sizeof(*evt) + sizeof(*im) ||
+            im->ImagePathLength >= AEGIS_MAX_PATH) {
+            fprintf(stderr, "[%s] malformed image-load event (%u bytes)\n",
+                    ts, evt->Size);
+            break;
+        }
+        printf("[%s] #%-5lu IMAGE   pid=%-6lu base=0x%016llx %.*ls%s%s\n",
+               ts, evt->Sequence, im->ProcessId, im->ImageBase,
+               (int)im->ImagePathLength, im->ImagePath,
+               im->SystemModeImage ? "  [kernel]" : "",
+               im->ImagePathExact ? "" : " [partial-name]");
+        break;
+    }
     default:
         printf("[%s] #%-5lu type=%u (%u bytes)\n", ts, evt->Sequence, evt->Type, evt->Size);
         break;
@@ -88,7 +126,7 @@ int main(void)
         return 1;
     }
 
-    printf("AegisAgent: streaming process events. Ctrl+C to stop.\n");
+    printf("AegisAgent: streaming process, thread, and image events. Ctrl+C to stop.\n");
 
     for (;;) {
         DWORD returned = 0;
